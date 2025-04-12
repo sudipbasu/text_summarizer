@@ -14,6 +14,9 @@
     <!-- jsPDF (for PDF download) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
+    <!-- pdf.js (for extracting PDF text) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
     <style>
         :root {
             --primary: #4e73df;
@@ -159,7 +162,6 @@
         .summary-box {
             animation: bounceIn 0.5s ease-out;
         }
-
     </style>
 </head>
 <body>
@@ -182,6 +184,10 @@
                     <label for="input_text" class="form-label">Enter your text below:</label>
                     <textarea class="form-control" id="input_text" name="input_text" rows="8" required oninput="updateWordCount()">{{ request.form.input_text or '' }}</textarea>
                     <div class="text-end word-count mt-2" id="wordCount">Words: 0</div>
+                </div>
+                <div class="mb-3">
+                    <label for="fileInput" class="form-label">Upload PDF or .txt file:</label>
+                    <input class="form-control" type="file" id="fileInput" accept=".txt,.pdf" onchange="handleFileUpload(event)">
                 </div>
                 <div class="d-flex justify-content-between gap-2">
                     <button type="submit" class="btn btn-custom w-100">Summarize</button>
@@ -250,6 +256,42 @@
             }).catch(() => {
                 alert("Failed to copy!");
             });
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+
+            if (file.type === "text/plain") {
+                reader.onload = () => {
+                    document.getElementById('input_text').value = reader.result;
+                    updateWordCount();
+                };
+                reader.readAsText(file);
+            } else if (file.type === "application/pdf") {
+                const fileReader = new FileReader();
+                fileReader.onload = function () {
+                    const typedArray = new Uint8Array(this.result);
+                    pdfjsLib.getDocument(typedArray).promise.then(function (pdf) {
+                        let textPromises = [];
+                        for (let i = 1; i <= pdf.numPages; i++) {
+                            textPromises.push(
+                                pdf.getPage(i).then(page => page.getTextContent())
+                                    .then(content => content.items.map(item => item.str).join(" "))
+                            );
+                        }
+                        Promise.all(textPromises).then(pagesText => {
+                            document.getElementById('input_text').value = pagesText.join("\n\n");
+                            updateWordCount();
+                        });
+                    });
+                };
+                fileReader.readAsArrayBuffer(file);
+            } else {
+                alert("Unsupported file type. Please upload a .txt or .pdf file.");
+            }
         }
 
         // Initialize word count on page load
